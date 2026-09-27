@@ -1,0 +1,158 @@
+{
+  "name": "06 — Schedule Posts (Portfolio)",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "url": "http://django:8000/internal-api/projects/PROJECT_ID/settings/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        0
+      ],
+      "name": "Get Project Settings"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT COUNT(*)::integer AS posts_today\nFROM posts\nWHERE\n    (scheduled_at >= (CURRENT_DATE AT TIME ZONE 'Europe/Warsaw')\n     AND scheduled_at < ((CURRENT_DATE + INTERVAL '1 day') AT TIME ZONE 'Europe/Warsaw'))\n OR (published_at >= (CURRENT_DATE AT TIME ZONE 'Europe/Warsaw')\n     AND published_at < ((CURRENT_DATE + INTERVAL '1 day') AT TIME ZONE 'Europe/Warsaw'));",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        416,
+        0
+      ],
+      "name": "Get Today's Post Count"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, created_at, scheduled_at\nFROM posts\nWHERE status = 'READY'\n  AND (scheduled_at IS NULL OR scheduled_at > NOW())\nORDER BY scheduled_at ASC NULLS LAST, created_at ASC\nLIMIT 50;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        640,
+        0
+      ],
+      "name": "Get Unscheduled READY Posts"
+    },
+    {
+      "parameters": {
+        "jsCode": "const posts = $input.all();\nconst settings = $('Get Project Settings').first().json.settings;\nconst postsPerDay = Number(settings.posts_per_day);\nconst startHour = Number(settings.publish_start_hour);\nconst endHour = Number(settings.publish_end_hour);\nconst postsToday = Number($(\"Get Today's Post Count\").first().json.posts_today ?? 0);\nconst zone = 'Europe/Warsaw';\nif (!Number.isFinite(postsPerDay) || postsPerDay <= 0 || !Number.isFinite(startHour) || !Number.isFinite(endHour) || startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 || startHour >= endHour) throw new Error('Invalid publishing settings');\nconst now = $now.setZone(zone);\nconst futureScheduledReady = posts.filter(item => item.json.scheduled_at).length;\nconst alreadyUsedToday = Math.max(0, postsToday - futureScheduledReady);\nconst remainingToday = Math.max(0, Math.floor(postsPerDay) - alreadyUsedToday);\nif (remainingToday === 0) return [];\nconst selectedPosts = posts.slice(0, remainingToday);\nif (!selectedPosts.length) return [];\nconst dayStart = now.startOf('day');\nconst windowStart = dayStart.set({hour:startHour,minute:0,second:0,millisecond:0});\nconst windowEnd = dayStart.set({hour:endHour,minute:0,second:0,millisecond:0});\nif (now >= windowEnd) return [];\nconst start = now < windowStart ? windowStart : now.plus({minutes:5});\nconst normalIntervalMinutes = windowEnd.diff(windowStart,'minutes').minutes / postsPerDay;\nlet intervalMinutes = normalIntervalMinutes;\nif (selectedPosts.length > 1) {\n  const availableMinutes = windowEnd.diff(start,'minutes').minutes;\n  const requiredMinutes = normalIntervalMinutes * (selectedPosts.length - 1);\n  if (requiredMinutes > availableMinutes) intervalMinutes = availableMinutes / (selectedPosts.length - 1);\n}\nreturn selectedPosts.map((item,index)=>({json:{...item.json,scheduled_at:start.plus({minutes:intervalMinutes*index}).toUTC().toISO()}}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        0
+      ],
+      "name": "Build Schedule"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET scheduled_at = $1, updated_at = NOW()\nWHERE id = $2;",
+        "options": {
+          "queryReplacement": "={{ [ $json.scheduled_at, $json.id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1088,
+        0
+      ],
+      "name": "Update Post Schedule"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Project Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Project Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Today's Post Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Today's Post Count": {
+      "main": [
+        [
+          {
+            "node": "Get Unscheduled READY Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Unscheduled READY Posts": {
+      "main": [
+        [
+          {
+            "node": "Build Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Schedule": {
+      "main": [
+        [
+          {
+            "node": "Update Post Schedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodeGroups": []
+}
