@@ -9,15 +9,11 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
       "typeVersion": 1,
       "position": [
-        16,
+        240,
         176
       ],
-      "name": "DeepSeek Chat Model",
-      "credentials": {
-        "deepSeekApi": {
-          "name": "DeepSeek account"
-        }
-      }
+      "id": "8a1b30f7-1de7-4a4b-b5b4-dac28150055d",
+      "name": "DeepSeek Chat Model"
     },
     {
       "parameters": {
@@ -26,9 +22,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        176,
-        176
+        432,
+        192
       ],
+      "id": "6ab0e4c9-88b4-493a-867b-6814b3dc2bc2",
       "name": "Structured Output Parser",
       "retryOnFail": true,
       "onError": "continueRegularOutput"
@@ -49,17 +46,13 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.5,
       "position": [
-        -336,
-        -256
+        -384,
+        -224
       ],
+      "id": "5eeeae20-d796-451c-827f-46da4e1961ae",
       "name": "Get Project Settings",
       "retryOnFail": true,
-      "waitBetweenTries": 5000,
-      "credentials": {
-        "httpBearerAuth": {
-          "name": "Bearer Auth account"
-        }
-      }
+      "waitBetweenTries": 5000
     },
     {
       "parameters": {
@@ -68,9 +61,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        464,
-        -240
+        -432,
+        16
       ],
+      "id": "531b2821-93ab-4ebc-a0f5-cb2ac54a5332",
       "name": "Code in JavaScript1"
     },
     {
@@ -81,15 +75,11 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
       "typeVersion": 1,
       "position": [
-        -384,
+        -208,
         192
       ],
-      "name": "DeepSeek Chat Model1",
-      "credentials": {
-        "deepSeekApi": {
-          "name": "DeepSeek account"
-        }
-      }
+      "id": "ef609b51-49cc-49b4-9861-59c38d64287a",
+      "name": "DeepSeek Chat Model1"
     },
     {
       "parameters": {
@@ -98,9 +88,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        -240,
+        -64,
         192
       ],
+      "id": "82f2b185-08b6-468b-8b6b-6f63b3637492",
       "name": "Structured Output Parser1",
       "retryOnFail": true,
       "onError": "continueRegularOutput"
@@ -112,9 +103,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -128,
+        96,
         0
       ],
+      "id": "5c476af2-fc2e-4c24-b12f-21fe41eb2013",
       "name": "Code in JavaScript2"
     },
     {
@@ -126,20 +118,16 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        256,
-        -240
+        -608,
+        0
       ],
-      "name": "Get Candidates",
-      "credentials": {
-        "postgres": {
-          "name": "Science Channel PostgreSQL"
-        }
-      }
+      "id": "2ee34d86-e383-4b1a-ad6e-777ca6ee65ae",
+      "name": "Get Candidates"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "=Ты — редактор русскоязычного научно-технологического Telegram-канала NEXUS.\n\nПеред тобой список статей-кандидатов на публикацию.\n\nТвоя задача — найти материалы, которые рассказывают фактически об одном и том же\nнаучном исследовании, эксперименте, открытии, событии, запуске,\nтехнологическом анонсе или новости.\n\nВАЖНО:\n\nНе считай статьи дубликатами только потому, что они относятся к одной теме.\n\nНапример:\n- две разные новости о чёрных дырах — НЕ обязательно дубликаты;\n- две разные новости об искусственном интеллекте — НЕ дубликаты;\n- две статьи о разных исследованиях Марса — НЕ дубликаты;\n- две разные новости о SpaceX — НЕ дубликаты;\n- две статьи о разных продуктах NVIDIA — НЕ дубликаты.\n\nСчитать статьи дубликатами нужно только если они описывают\nодно и то же конкретное событие, исследование, публикацию, эксперимент,\nзапуск, продуктовый анонс или открытие,\nдаже если заголовки и формулировки отличаются.\n\nПримеры дубликатов:\n- два источника рассказывают об одном и том же запуске ракеты;\n- два сайта пересказывают одно и то же исследование;\n- несколько изданий сообщают об одной и той же презентации устройства;\n- несколько статей описывают один и тот же результат эксперимента.\n\nЕсли сомневаешься, являются ли две статьи одним и тем же событием,\nНЕ объединяй их.\n\nЕсли несколько статей являются дубликатами,\nвыбери ОДНУ лучшую для дальнейшего создания поста NEXUS.\n\nПри выборе лучшей статьи учитывай в первую очередь:\n\n1. Насколько полно и понятно описано само событие.\n2. Насколько из материала легко сделать точный и содержательный пост.\n3. post_potential.\n4. ai_score.\n5. audience_interest.\n6. impact.\n7. novelty.\n8. wow_factor.\n9. Качество и конкретность описания.\n\nВАЖНО:\n\nНе выбирай статью только потому, что у неё самый высокий ai_score.\n\nЕсли одна статья имеет немного меньший ai_score,\nно намного лучше объясняет событие и имеет более высокий post_potential,\nможно оставить именно её.\n\nТакже не выбирай материал только из-за высокого wow_factor.\nДля NEXUS важнее точность, понятность и возможность сделать хороший пост.\n\nЕсли одна статья содержит существенно больше конкретной информации\nо том же событии, предпочитай её.\n\nstory_type и category могут помочь понять,\nдействительно ли материалы относятся к одному событию,\nно совпадение category или story_type само по себе\nНЕ означает, что статьи являются дубликатами.\n\nСтатьи:\n\n{{ JSON.stringify($json.articles, null, 2) }}\n\nВерни только корректный JSON без Markdown и без дополнительного текста:\n\n{\n  \"keep_ids\": [1, 2, 3],\n  \"duplicate_groups\": [\n    {\n      \"keep_id\": 1,\n      \"duplicate_ids\": [4, 7]\n    }\n  ]\n}",
+        "text": "=Ты — редактор русскоязычного научно-технологического Telegram-канала NEXUS.\n\nПеред тобой два набора данных:\n\n1. CURRENT_CANDIDATES — новые статьи-кандидаты на публикацию.\n2. PUBLISHED_STORIES — истории, которые NEXUS уже публиковал за последние 7 дней.\n\nТвоя задача — определить, какие статьи из CURRENT_CANDIDATES можно передать\nна следующий этап создания постов.\n\nТы должен выполнить ДВЕ независимые проверки:\n\n1. Найти дубликаты внутри CURRENT_CANDIDATES.\n2. Проверить, не публиковал ли NEXUS уже ту же самую историю,\n   используя PUBLISHED_STORIES.\n\n────────────────────────────\nЧТО СЧИТАЕТСЯ ДУБЛИКАТОМ\n────────────────────────────\n\nДубликат — это материал, который описывает фактически одно и то же\nконкретное событие, исследование, эксперимент, открытие, запуск,\nкосмическую миссию, презентацию продукта, технологический анонс\nили другой конкретный информационный повод.\n\nЗаголовки, формулировки и стиль могут сильно отличаться.\nСравнивай СМЫСЛ события, а не буквальное совпадение текста.\n\nНапример, дубликатами являются:\n\n- два источника о том же конкретном запуске ракеты;\n- два сайта, пересказывающие одно и то же исследование;\n- несколько публикаций об одной презентации устройства;\n- несколько статей об одном результате эксперимента;\n- разные источники, описывающие одно и то же открытие;\n- статьи, основанные на одной и той же научной работе или одном анонсе,\n  даже если авторы делают акцент на разных деталях.\n\n────────────────────────────\nЧТО НЕ ЯВЛЯЕТСЯ ДУБЛИКАТОМ\n────────────────────────────\n\nСовпадение общей темы НЕ означает дубликат.\n\nНапример:\n\n- две разные новости о JWST — НЕ обязательно дубликаты;\n- два разных запуска SpaceX — НЕ дубликаты;\n- разные исследования Марса — НЕ дубликаты;\n- разные исследования чёрных дыр — НЕ дубликаты;\n- разные новости об искусственном интеллекте — НЕ дубликаты;\n- разные новости одной компании — НЕ дубликаты;\n- разные продукты NVIDIA — НЕ дубликаты.\n\nСовпадение category или story_type само по себе\nНИКОГДА не является достаточным основанием считать статьи дубликатами.\n\nЕсли недостаточно информации, чтобы уверенно установить,\nчто материалы описывают одно и то же конкретное событие,\nНЕ считай их дубликатами.\n\n────────────────────────────\nПРОВЕРКА №1\nДУБЛИКАТЫ В CURRENT_CANDIDATES\n────────────────────────────\n\nЕсли несколько статей из CURRENT_CANDIDATES описывают одну историю,\nоставь только ОДНУ лучшую.\n\nПри выборе лучшей статьи учитывай:\n\n1. Полноту и конкретность description.\n2. Возможность сделать точный и содержательный пост.\n3. post_potential.\n4. ai_score.\n5. audience_interest.\n6. impact.\n7. novelty.\n8. wow_factor.\n\nНе выбирай статью только потому, что у неё максимальный ai_score.\n\nЕсли статья с немного меньшим ai_score содержит существенно больше\nконкретной информации и лучше подходит для создания поста,\nможно оставить именно её.\n\nВысокий wow_factor также сам по себе не является основанием\nпредпочесть материал.\n\nДля каждой группы таких дублей:\n\n- id выбранной статьи включи в keep_ids;\n- остальные id укажи в duplicate_groups как duplicate_ids.\n\n────────────────────────────\nПРОВЕРКА №2\nСРАВНЕНИЕ С PUBLISHED_STORIES\n────────────────────────────\n\nТеперь сравни каждый CURRENT_CANDIDATE с PUBLISHED_STORIES.\n\nЕсли NEXUS уже публиковал ту же конкретную историю,\nНЕ включай id нового кандидата в keep_ids.\n\nОсобенно внимательно проверяй случаи, когда:\n\n- заголовки сильно отличаются;\n- разные источники делают акцент на разных деталях;\n- одна статья появилась позже другой;\n- используются разные формулировки одного результата;\n- одна публикация описывает исследование в целом,\n  а другая выделяет один из результатов того же исследования.\n\nПри этом новая статья НЕ является дублем только потому,\nчто она посвящена тому же объекту, компании, миссии,\nтелескопу, технологии или области науки.\n\nЕсли после предыдущей публикации произошло НОВОЕ событие,\nпоявился новый результат, новый запуск, новое исследование\nили существенное новое развитие истории — это НЕ дубль.\n\nЕсли не уверен, что речь идёт именно об одном информационном поводе,\nсчитай новую статью самостоятельной.\n\nВАЖНО:\n\nPUBLISHED_STORIES используются только как справочник истории публикаций.\n\nID из PUBLISHED_STORIES НИКОГДА не добавляй:\n- в keep_ids;\n- в duplicate_ids;\n- в keep_id внутри duplicate_groups.\n\nВсе ID в результате должны относиться ТОЛЬКО к CURRENT_CANDIDATES.\n\n────────────────────────────\nCURRENT_CANDIDATES\n────────────────────────────\n\n{{ JSON.stringify($json.articles, null, 2) }}\n\n────────────────────────────\nPUBLISHED_STORIES\n────────────────────────────\n\n{{ JSON.stringify(\n  $('Build Published Stories').first().json.published_stories,\n  null,\n  2\n) }}\n\n────────────────────────────\nФОРМАТ РЕЗУЛЬТАТА\n────────────────────────────\n\nВерни только корректный JSON.\nБез Markdown.\nБез комментариев.\nБез дополнительного текста.\n\n{\n  \"keep_ids\": [1, 2, 3],\n  \"duplicate_groups\": [\n    {\n      \"keep_id\": 1,\n      \"duplicate_ids\": [4, 7]\n    }\n  ]\n}\n\nПравила результата:\n\n- keep_ids содержит только CURRENT_CANDIDATES, которые можно публиковать;\n- исторический дубль просто отсутствует в keep_ids;\n- duplicate_groups описывает только дубликаты ВНУТРИ CURRENT_CANDIDATES;\n- если внутри CURRENT_CANDIDATES дублей нет, duplicate_groups должен быть [];\n- не придумывай ID, которых нет в CURRENT_CANDIDATES.",
         "hasOutputParser": true,
         "messages": {
           "messageValues": []
@@ -149,9 +137,10 @@
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.9,
       "position": [
-        -432,
+        -256,
         0
       ],
+      "id": "688ad73a-02bd-490b-aa57-2f13037a462f",
       "name": "Deduplicate Articles",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -167,9 +156,10 @@
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.9,
       "position": [
-        48,
+        272,
         0
       ],
+      "id": "38735fee-e03d-4418-9b4e-3c93f070fdbf",
       "name": "Create Post LLM",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -186,15 +176,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        512,
-        0
+        784,
+        16
       ],
-      "name": "Create Post & Mark Article",
-      "credentials": {
-        "postgres": {
-          "name": "Science Channel PostgreSQL"
-        }
-      }
+      "id": "7a03057d-f6d2-4773-a3b0-a81a6ca5bf6a",
+      "name": "Create Post & Mark Article"
     },
     {
       "parameters": {
@@ -203,9 +189,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        352,
-        0
+        592,
+        16
       ],
+      "id": "40635837-384a-49c7-822c-eef85618e488",
       "name": "Code in JavaScript"
     },
     {
@@ -215,9 +202,10 @@
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.2,
       "position": [
-        -496,
-        -256
+        -592,
+        -224
       ],
+      "id": "7cbdda0b-d16a-4500-8217-76af8cb13c40",
       "name": "When Executed by Another Workflow"
     },
     {
@@ -229,15 +217,11 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.7,
       "position": [
-        -160,
-        -256
+        224,
+        -224
       ],
-      "name": "Get Recent Posts",
-      "credentials": {
-        "postgres": {
-          "name": "Science Channel PostgreSQL"
-        }
-      }
+      "id": "307c1fed-f0ae-402a-b360-929ea5366e15",
+      "name": "Get Recent Posts"
     },
     {
       "parameters": {
@@ -246,12 +230,42 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        48,
-        -256
+        560,
+        -224
       ],
+      "id": "b7f62cf0-c978-4865-8e40-5a1fe6edb6bd",
       "name": "Run Once for All Items"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    a.id,\n    a.title,\n    a.description,\n    a.url,\n    a.category,\n    a.story_type,\n    p.published_at\nFROM posts p\nJOIN articles a\n    ON a.id = p.article_id\nWHERE p.status = 'PUBLISHED'\n  AND p.published_at >= NOW() - INTERVAL '7 days'\n  AND p.article_id IS NOT NULL\nORDER BY p.published_at DESC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -192,
+        -224
+      ],
+      "id": "66454677-873b-4057-a585-1dd70d47b8a0",
+      "name": "Get Recent Published Stories"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn [\n  {\n    json: {\n      published_stories: items.map(item => ({\n        id: item.json.id,\n        title: item.json.title,\n        description: item.json.description,\n        category: item.json.category,\n        story_type: item.json.story_type,\n        url: item.json.url,\n        published_at: item.json.published_at\n      }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        -224
+      ],
+      "id": "386c1e66-410a-45ec-ac36-e36efe844dc8",
+      "name": "Build Published Stories"
     }
   ],
+  "pinData": {},
   "connections": {
     "DeepSeek Chat Model": {
       "ai_languageModel": [
@@ -279,7 +293,7 @@
       "main": [
         [
           {
-            "node": "Get Recent Posts",
+            "node": "Get Recent Published Stories",
             "type": "main",
             "index": 0
           }
@@ -411,6 +425,28 @@
           }
         ]
       ]
+    },
+    "Get Recent Published Stories": {
+      "main": [
+        [
+          {
+            "node": "Build Published Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Published Stories": {
+      "main": [
+        [
+          {
+            "node": "Get Recent Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -422,5 +458,6 @@
     "executionTimeout": 1800,
     "availableInMCP": false
   },
-  "nodeGroups": []
+  "nodeGroups": [],
+  "tags": []
 }
