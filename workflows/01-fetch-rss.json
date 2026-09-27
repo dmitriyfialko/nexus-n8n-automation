@@ -1,0 +1,192 @@
+{
+  "name": "01 - Science_Channel",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    id,\n    name,\n    website_url,\n    feed_url,\n    category\nFROM sources\nWHERE is_active = TRUE\nORDER BY id;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        224,
+        0
+      ],
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.feed_url }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        0
+      ],
+      "name": "RSS Read",
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4eeead40-2a07-45a4-888d-ca2647972f95",
+              "name": "source_id",
+              "value": "={{ $('Execute a SQL query').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "952e7506-95ab-48e8-8963-748d8e7d0076",
+              "name": "source_name",
+              "value": "={{ $('Execute a SQL query').item.json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "a4aa223e-d77a-4edf-b8e3-1f67780c5640",
+              "name": "category",
+              "value": "={{ $('Execute a SQL query').item.json.category }}",
+              "type": "string"
+            },
+            {
+              "id": "6144c03b-ac87-4c13-850a-9fa74ad47564",
+              "name": "title",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "c72c97fd-f41a-4611-b1b2-b71be66c59b0",
+              "name": "url",
+              "value": "={{ $json.link }}",
+              "type": "string"
+            },
+            {
+              "id": "a31a381e-6fa2-4488-b14f-7ed10fb14dfa",
+              "name": "description",
+              "value": "={{ $json.contentSnippet || $json.content || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "171fd5cc-b922-4619-8de5-1abdf5a9fdfa",
+              "name": "published_at",
+              "value": "={{ $json.isoDate || $json.pubDate }}",
+              "type": "string"
+            },
+            {
+              "id": "dbde7207-6aaa-4381-b738-d6a874bf99b4",
+              "name": "author",
+              "value": "={{ $json.creator || $json.author || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        672,
+        0
+      ],
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO articles (\n    source_id,\n    title,\n    url,\n    description,\n    author,\n    published_at,\n    category\n)\nVALUES (\n    $1,\n    $2,\n    $3,\n    $4,\n    $5,\n    $6,\n    $7\n)\nON CONFLICT (url) DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [   $json.source_id,   $json.title,   $json.url,   $json.description,   $json.author,   $json.published_at,   $json.category ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        16,
+        0
+      ],
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "connections": {
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 10,
+    "availableInMCP": false
+  },
+  "nodeGroups": []
+}

@@ -1,0 +1,426 @@
+{
+  "name": "03 — Create Posts",
+  "nodes": [
+    {
+      "parameters": {
+        "model": "deepseek-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        16,
+        176
+      ],
+      "name": "DeepSeek Chat Model",
+      "credentials": {
+        "deepSeekApi": {
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"title\": \"Короткий заголовок поста\",\n  \"post_text\": \"Полный текст поста\",\n  \"image_strategy\": \"SOURCE_PREFERRED\",\n  \"image_prompt\": \"Detailed image generation prompt in English\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        176,
+        176
+      ],
+      "name": "Structured Output Parser",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "http://django:8000/internal-api/projects/PROJECT_ID/settings/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -336,
+        -256
+      ],
+      "name": "Get Project Settings",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn [\n  {\n    json: {\n      articles: items.map(item => ({\n        id: item.json.id,\n        title: item.json.title,\n        description: item.json.description,\n        category: item.json.category,\n        story_type: item.json.story_type,\n        ai_score: item.json.ai_score,\n        audience_interest: item.json.audience_interest,\n        novelty: item.json.novelty,\n        impact: item.json.impact,\n        post_potential: item.json.post_potential,\n        wow_factor: item.json.wow_factor,\n        url: item.json.url\n      }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -240
+      ],
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "model": "deepseek-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        192
+      ],
+      "name": "DeepSeek Chat Model1",
+      "credentials": {
+        "deepSeekApi": {
+          "name": "DeepSeek account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"keep_ids\": [1, 2, 3],\n  \"duplicate_groups\": [\n    {\n      \"keep_id\": 1,\n      \"duplicate_ids\": [4, 7]\n    }\n  ]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -240,
+        192
+      ],
+      "name": "Structured Output Parser1",
+      "retryOnFail": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\n// Если Deduplicate Articles завершился с ошибкой,\n// не пропускаем ничего дальше\nif (\n  !input.output ||\n  !Array.isArray(input.output.keep_ids)\n) {\n  return [];\n}\n\nconst keepIds = input.output.keep_ids.map(Number);\n\nconst originalArticles = $('Get Candidates').all();\n\nreturn originalArticles\n  .filter(item => keepIds.includes(Number(item.json.id)))\n  .map(item => ({\n    json: item.json\n  }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        0
+      ],
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH settings AS (\n    SELECT\n        {{ Number($('Get Project Settings').item.json.settings.min_ai_score) }}::numeric AS min_score,\n        {{ Number($('Get Project Settings').item.json.settings.posts_per_day) }}::integer AS posts_limit\n),\n\ncandidates AS (\n    SELECT\n        a.id,\n        a.title,\n        a.description,\n        a.url,\n        a.category,\n        a.story_type,\n        a.ai_score,\n        a.audience_interest,\n        a.novelty,\n        a.impact,\n        a.post_potential,\n        a.wow_factor,\n        a.published_at,\n\n        ROW_NUMBER() OVER (\n            PARTITION BY a.category\n            ORDER BY\n                a.ai_score DESC,\n                a.post_potential DESC NULLS LAST,\n                a.audience_interest DESC NULLS LAST,\n                a.wow_factor DESC NULLS LAST,\n                a.published_at DESC NULLS LAST\n        ) AS category_rank,\n\n        CASE\n            -- Основные кандидаты\n            WHEN a.ai_score >= s.min_score\n                THEN 0\n\n            -- Резервные кандидаты:\n            -- score немного ниже основного порога,\n            -- но есть очень сильный редакционный показатель\n            WHEN a.ai_score >= s.min_score - 0.5\n                 AND a.ai_score < s.min_score\n                 AND (\n                     a.post_potential >= s.min_score + 0.5\n                     OR a.audience_interest >= s.min_score + 0.5\n                     OR a.wow_factor >= s.min_score + 0.5\n                 )\n                THEN 1\n\n            ELSE 2\n        END AS candidate_group\n\n    FROM articles a\n    CROSS JOIN settings s\n\n    WHERE a.status = 'SCORED'\n\n      AND (\n          -- Основные кандидаты\n          a.ai_score >= s.min_score\n\n          OR\n\n          -- Сильный резерв\n          (\n              a.ai_score >= s.min_score - 0.5\n              AND a.ai_score < s.min_score\n              AND (\n                  a.post_potential >= s.min_score + 0.5\n                  OR a.audience_interest >= s.min_score + 0.5\n                  OR a.wow_factor >= s.min_score + 0.5\n              )\n          )\n      )\n),\n\nordered AS (\n    SELECT\n        *,\n\n        CASE\n            -- Первый сильный материал каждой категории\n            -- получает небольшой приоритет разнообразия\n            WHEN category_rank = 1 THEN 0\n            ELSE 1\n        END AS diversity_priority\n\n    FROM candidates\n)\n\nSELECT\n    id,\n    title,\n    description,\n    url,\n    category,\n    story_type,\n    ai_score,\n    audience_interest,\n    novelty,\n    impact,\n    post_potential,\n    wow_factor\n\nFROM ordered\n\nORDER BY\n    -- Сначала основные кандидаты,\n    -- потом резервные\n    candidate_group ASC,\n\n    -- Внутри группы стараемся сначала\n    -- показать разные категории\n    diversity_priority ASC,\n\n    -- Потом уже качество\n    ai_score DESC,\n    post_potential DESC NULLS LAST,\n    audience_interest DESC NULLS LAST,\n    wow_factor DESC NULLS LAST,\n    published_at DESC NULLS LAST\n\nLIMIT (\n    SELECT posts_limit\n    FROM settings\n);",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        256,
+        -240
+      ],
+      "name": "Get Candidates",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ты — редактор русскоязычного научно-технологического Telegram-канала NEXUS.\n\nПеред тобой список статей-кандидатов на публикацию.\n\nТвоя задача — найти материалы, которые рассказывают фактически об одном и том же\nнаучном исследовании, эксперименте, открытии, событии, запуске,\nтехнологическом анонсе или новости.\n\nВАЖНО:\n\nНе считай статьи дубликатами только потому, что они относятся к одной теме.\n\nНапример:\n- две разные новости о чёрных дырах — НЕ обязательно дубликаты;\n- две разные новости об искусственном интеллекте — НЕ дубликаты;\n- две статьи о разных исследованиях Марса — НЕ дубликаты;\n- две разные новости о SpaceX — НЕ дубликаты;\n- две статьи о разных продуктах NVIDIA — НЕ дубликаты.\n\nСчитать статьи дубликатами нужно только если они описывают\nодно и то же конкретное событие, исследование, публикацию, эксперимент,\nзапуск, продуктовый анонс или открытие,\nдаже если заголовки и формулировки отличаются.\n\nПримеры дубликатов:\n- два источника рассказывают об одном и том же запуске ракеты;\n- два сайта пересказывают одно и то же исследование;\n- несколько изданий сообщают об одной и той же презентации устройства;\n- несколько статей описывают один и тот же результат эксперимента.\n\nЕсли сомневаешься, являются ли две статьи одним и тем же событием,\nНЕ объединяй их.\n\nЕсли несколько статей являются дубликатами,\nвыбери ОДНУ лучшую для дальнейшего создания поста NEXUS.\n\nПри выборе лучшей статьи учитывай в первую очередь:\n\n1. Насколько полно и понятно описано само событие.\n2. Насколько из материала легко сделать точный и содержательный пост.\n3. post_potential.\n4. ai_score.\n5. audience_interest.\n6. impact.\n7. novelty.\n8. wow_factor.\n9. Качество и конкретность описания.\n\nВАЖНО:\n\nНе выбирай статью только потому, что у неё самый высокий ai_score.\n\nЕсли одна статья имеет немного меньший ai_score,\nно намного лучше объясняет событие и имеет более высокий post_potential,\nможно оставить именно её.\n\nТакже не выбирай материал только из-за высокого wow_factor.\nДля NEXUS важнее точность, понятность и возможность сделать хороший пост.\n\nЕсли одна статья содержит существенно больше конкретной информации\nо том же событии, предпочитай её.\n\nstory_type и category могут помочь понять,\nдействительно ли материалы относятся к одному событию,\nно совпадение category или story_type само по себе\nНЕ означает, что статьи являются дубликатами.\n\nСтатьи:\n\n{{ JSON.stringify($json.articles, null, 2) }}\n\nВерни только корректный JSON без Markdown и без дополнительного текста:\n\n{\n  \"keep_ids\": [1, 2, 3],\n  \"duplicate_groups\": [\n    {\n      \"keep_id\": 1,\n      \"duplicate_ids\": [4, 7]\n    }\n  ]\n}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        -432,
+        0
+      ],
+      "name": "Deduplicate Articles",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ты — главный редактор русскоязычного Telegram-канала NEXUS.\n\nNEXUS рассказывает о науке, космосе и технологиях.\nГлавная идея канала:\n\n«Следим за будущим, пока оно становится настоящим.»\n\nТемы канала:\n— наука;\n— космос и астрономия;\n— SpaceX, ракеты и космические миссии;\n— физика;\n— искусственный интеллект;\n— робототехника;\n— инженерия;\n— энергетика;\n— процессоры, GPU, чипы и вычислительная техника;\n— значимые IT-продукты;\n— электромобили и транспортные технологии;\n— важные технологические продукты и разработки;\n— научные открытия и эксперименты.\n\nТвоя задача — на основе предоставленного материала создать самостоятельный русскоязычный пост для Telegram-канала NEXUS.\n\nNEXUS — НЕ новостная RSS-лента и НЕ автоматический пересказ источников.\n\nПосле прочтения поста человек должен понять:\n— что произошло;\n— что именно здесь нового или необычного;\n— почему это интересно;\n— какое значение это имеет;\n— что это может изменить или какой следующий шаг ожидается, ТОЛЬКО если это следует из исходного материала.\n\n==================================================\nГЛАВНОЕ ПРАВИЛО: ТОЛЬКО ПРЕДОСТАВЛЕННЫЕ ФАКТЫ\n==================================================\n\nИспользуй факты ТОЛЬКО из полей текущего материала:\n\ntitle\ndescription\nurl\ncategory\nstory_type\nai_score\naudience_interest\nnovelty\nimpact\npost_potential\nwow_factor\n\nURL является идентификатором источника. Не утверждай, что ты прочитал страницу по URL.\n\nНЕ используй собственные знания модели для добавления фактов.\n\nЗапрещено придумывать или самостоятельно добавлять:\n— числа;\n— даты;\n— характеристики;\n— причины;\n— результаты;\n— имена участников;\n— заявления компаний;\n— цитаты;\n— технические подробности;\n— прогнозы;\n— последствия;\n— возможности технологии,\nесли их нет в title или description.\n\nЕсли исходный материал выражает неопределённость словами вроде:\nmay, might, could, potentially, suggests, appears, possible,\nсохраняй эту неопределённость в русском тексте.\n\nНе превращай:\n— предположение в факт;\n— исследование в доказанный результат;\n— прототип в готовый продукт;\n— эксперимент в массовую технологию;\n— демонстрацию в коммерческий запуск;\n— корреляцию в причинность;\n— потенциальную возможность в существующую функцию.\n\nЕсли данных мало — лучше написать более короткий и точный пост, чем заполнять пробелы догадками.\n\n==================================================\nСТИЛЬ NEXUS\n==================================================\n\nПиши как хороший научно-технологический журналист, а не как нейросеть, пресс-релиз или энциклопедия.\n\nСтиль:\n— живой;\n— современный;\n— понятный;\n— информативный;\n— компактный;\n— уверенный, но без необоснованной категоричности.\n\nИзбегай:\n— канцелярита;\n— рекламных формулировок;\n— искусственного восторга;\n— кликбейта;\n— чрезмерного пафоса;\n— одинаковых шаблонных конструкций;\n— повторения одной и той же структуры в каждом посте.\n\nНе начинай каждый пост одинаково.\n\nНе используй постоянно конструкции:\n«Почему это важно:»\n«Что произошло:»\n«Что это значит:»\n«Главное:»\n«Итог:»\n\nТакие подзаголовки допустимы только изредка, когда они действительно делают конкретный пост лучше.\n\nПредпочитай естественные переходы между абзацами.\n\nНапример, вместо:\n\n«Почему это важно: технология позволит...»\n\nлучше естественно продолжить мысль:\n\n«Если метод удастся масштабировать, он может...»\n\nНо только если это следует из исходного материала.\n\n==================================================\nПОСЛЕДНИЕ ПУБЛИКАЦИИ NEXUS\n==================================================\n\nНиже находятся последние публикации канала:\n\n{{ JSON.stringify(\n  $('Run Once for All Items').first().json.recent_posts,\n  null,\n  2\n) }}\n\nИспользуй их ТОЛЬКО как редакционный контекст.\n\nОни нужны, чтобы новый пост не выглядел шаблонным относительно недавних публикаций.\n\nПеред написанием мысленно сравни новый пост с последними публикациями.\n\nСтарайся не повторять:\n— одинаковое начало;\n— одинаковую последовательность абзацев;\n— одинаковые вводные конструкции;\n— одинаковые подзаголовки;\n— одинаковые места для жирного выделения;\n— одинаковые финальные фразы;\n— одинаковый ритм текста.\n\nВАЖНО:\nсовпадение темы с предыдущими публикациями НЕ означает, что новый материал нельзя публиковать.\n\nЕсли новая статья рассказывает о другом событии, исследовании, продукте или результате — пиши пост.\n\nПоследние публикации используются для разнообразия ПОДАЧИ, а не как источник фактов.\n\nНИКОГДА не переноси факты из предыдущих публикаций в новый материал.\n\n==================================================\nЗАГОЛОВОК\n==================================================\n\nСоздай короткий и понятный заголовок.\n\nЗаголовок должен передавать главный смысл материала.\n\nНе используй:\n— кликбейт;\n— преувеличения;\n— источник;\n— точку в конце;\n— бессодержательные конструкции вроде «Учёные снова удивили мир».\n\nИзвестные названия компаний, продуктов, аппаратов или технологий можно использовать, если они действительно являются важной частью новости.\n\nПоле title должно содержать ОБЫЧНЫЙ текст без HTML.\n\nЗаголовок НЕ нужно повторять в post_text.\n\n==================================================\nСТРУКТУРА ПОСТА\n==================================================\n\nОбычно пост должен содержать 2–4 коротких абзаца.\n\nНе используй один фиксированный шаблон.\n\nВ зависимости от материала можно начать:\n— с самого необычного факта;\n— с результата;\n— с события;\n— с проблемы, которую пытаются решить;\n— с конкретного объекта или технологии;\n— с короткого контекста;\n— с последствия события.\n\nВ основной части естественно раскрой:\n1. Что произошло.\n2. Что в этом нового, необычного или существенного.\n3. Почему это имеет значение.\n\nНе превращай эти три пункта в обязательные видимые подзаголовки.\n\nПост должен восприниматься как цельный небольшой материал, написанный человеком.\n\n==================================================\nTELEGRAM HTML\n==================================================\n\nПоле post_text должно быть готово для отправки в Telegram с Parse Mode = HTML.\n\nРазрешённая разметка:\n\n<b>текст</b> — жирное выделение;\n<i>текст</i> — курсив;\n<blockquote>текст</blockquote> — цитата.\n\nИспользуй разметку умеренно.\n\nЖирным выделяй только действительно важные фрагменты:\n— ключевой результат;\n— главное число;\n— название важной технологии или объекта;\n— центральную мысль;\n— наиболее важный вывод.\n\nОбычно достаточно 1–3 жирных выделений на весь пост.\n\nНе выделяй жирным целые большие абзацы.\nНе выделяй почти каждое предложение.\nНе используй жирное одинаковым образом во всех публикациях.\n\nКурсив используй редко — только когда он действительно улучшает чтение.\n\n==================================================\nЦИТАТЫ\n==================================================\n\nЦитата НЕ обязательна.\n\nИспользуй <blockquote>...</blockquote> только если во входном title или description присутствует содержательный фрагмент, который можно действительно процитировать.\n\nНИКОГДА не придумывай цитату.\n\nНИКОГДА не создавай фразу от имени:\n— учёного;\n— исследователя;\n— компании;\n— инженера;\n— организации,\nесли такой фразы нет во входном материале.\n\nНе превращай собственный пересказ в цитату.\n\nЕсли достоверной цитаты во входных данных нет — не используй <blockquote> вообще.\n\nЦитата должна быть короткой и действительно полезной для поста.\n\n==================================================\nТЕХНИЧЕСКИЕ ПРАВИЛА HTML\n==================================================\n\nИспользуй только следующие HTML-теги:\n\n<b>\n<i>\n<blockquote>\n\nНе используй Markdown-разметку:\n\n**жирный**\n__жирный__\n### заголовок\n\nНе используй другие HTML-теги.\n\nВсегда закрывай открытые HTML-теги.\n\nНе вкладывай теги друг в друга без необходимости.\n\nНе помещай HTML-теги внутрь hashtags.\n\nЕсли в обычном тексте требуется символ &, записывай его как &amp;.\n\nЕсли требуется символ <, записывай его как &lt;.\n\nЕсли требуется символ >, записывай его как &gt;.\n\n==================================================\nОБЪЁМ\n==================================================\n\nОсновной текст ориентировочно 500–800 символов.\n\nЭто ориентир, а не требование заполнить объём.\n\nЕсли материала недостаточно для 500 символов — напиши меньше.\n\nТочность важнее длины.\n\nИспользуй короткие абзацы, удобные для чтения с телефона.\n\nДопустимо 1–3 уместных emoji на весь пост.\n\nНе ставь emoji механически в одинаковых местах каждого поста.\n\n==================================================\nХЕШТЕГИ\n==================================================\n\nВ последней строке post_text добавь ровно 5 коротких релевантных русскоязычных хештегов.\n\nНапример:\n\n#космос #наука #технологии #ИИ #робототехника\n\nПодбирай их по конкретной теме материала.\n\nПеред строкой хештегов должен быть перенос строки.\n\nНе используй HTML внутри хештегов.\n\n==================================================\nКОММЕРЧЕСКИЕ И ТЕХНОЛОГИЧЕСКИЕ НОВОСТИ\n==================================================\n\nЕсли материал касается OpenAI, SpaceX, Tesla, NVIDIA, Apple, Google, Microsoft или другой известной компании, не превращай пост в рекламу бренда.\n\nФокусируйся на:\n— технологии;\n— результате;\n— продукте;\n— инженерном решении;\n— научном или технологическом значении события.\n\nИзвестность компании сама по себе не делает новость важной.\n\nНо значимое технологическое событие не нужно занижать только потому, что оно коммерческое.\n\n==================================================\nРЕДАКЦИОННЫЕ МЕТРИКИ\n==================================================\n\nТебе передаются:\n\nai_score\naudience_interest\nnovelty\nimpact\npost_potential\nwow_factor\nstory_type\n\nЭти значения НЕ являются фактами статьи.\n\nНИКОГДА не упоминай оценки в посте.\n\nИспользуй их только для выбора подачи.\n\naudience_interest:\nесли высокий — найди наиболее понятный широкой аудитории аспект материала.\n\nnovelty:\nесли высокий — подчеркни, что именно нового произошло, но только если это указано в title или description.\n\nimpact:\nесли высокий — удели больше внимания значению события, не преувеличивая его.\n\npost_potential:\nесли высокий — постарайся найти одну сильную центральную мысль.\n\nwow_factor:\nесли высокий и необычная деталь действительно присутствует в исходном материале — её можно использовать в начале поста.\n\nstory_type используй для выбора формы подачи:\n\ndiscovery — акцент на том, что обнаружено;\nbreakthrough — на достигнутом результате;\nmission — на событии миссии и следующем этапе;\nproduct — на реальном новшестве продукта;\nai — на новой возможности или подходе;\nexperiment — на эксперименте и результате;\nobservation — на наблюдаемом явлении;\nindustry — на технологическом или отраслевом значении;\nother — выбери наиболее естественную структуру.\n\n==================================================\nИЗОБРАЖЕНИЕ\n==================================================\n\nОпредели image_strategy.\n\nДопустимы ТОЛЬКО:\n\nSOURCE_PREFERRED\nGENERATE\n\nВыбирай SOURCE_PREFERRED, если реальное изображение непосредственно связано с материалом и будет информативнее искусственной иллюстрации.\n\nПримеры:\n— реальный космический аппарат;\n— ракета;\n— астрономическое наблюдение;\n— исследовательское изображение;\n— конкретный автомобиль;\n— устройство;\n— процессор или чип;\n— робот;\n— прототип;\n— экспериментальная установка;\n— микроскопическое изображение;\n— конкретный физический объект.\n\nПрава на использование изображения проверяются отдельно другим этапом workflow.\n\nВыбирай GENERATE, если:\n— тема абстрактная;\n— речь идёт о теории;\n— объект невозможно нормально сфотографировать;\n— материал посвящён алгоритму или данным;\n— подходящего реального изображения, скорее всего, нет;\n— реальная фотография будет лишь декоративной;\n— научная иллюстрация лучше объяснит тему.\n\nЕсли сомневаешься — GENERATE.\n\n==================================================\nIMAGE PROMPT\n==================================================\n\nВсегда создавай image_prompt, даже если image_strategy = SOURCE_PREFERRED.\n\nЭто fallback на случай, если реальное изображение получить не удастся.\n\nimage_prompt должен быть ТОЛЬКО на английском языке.\n\nОпиши:\n— главный объект;\n— окружение;\n— композицию;\n— масштаб;\n— освещение;\n— важные научные или технические детали;\n— желаемую реалистичность.\n\nИзображение должно быть визуально сильным, но научно и технически правдоподобным.\n\nНе добавляй необоснованную фантастику.\n\nЗапрещены:\n— текст;\n— буквы;\n— цифры;\n— подписи;\n— логотипы;\n— watermark.\n\n==================================================\nФИНАЛЬНАЯ ПРОВЕРКА\n==================================================\n\nПеред ответом мысленно проверь:\n\n1. Понятно ли, что произошло?\n2. Понятно ли, что здесь нового или интересного?\n3. Понятно ли, почему событие имеет значение?\n4. Все ли факты присутствуют в title или description?\n5. Не добавил ли ты знания из памяти модели?\n6. Сохранена ли неопределённость исходного материала?\n7. Не преувеличено ли значение события?\n8. Не похож ли текст на пресс-релиз?\n9. Не похож ли текст на простой перевод description?\n10. Не повторяет ли структура последние публикации NEXUS?\n11. Нет ли шаблонного «Почему это важно:» без необходимости?\n12. Уместны ли жирные выделения?\n13. Если есть цитата — действительно ли её текст присутствует во входных данных?\n14. Корректно ли закрыты все HTML-теги?\n15. Ровно ли 5 хештегов?\n16. Захочет ли читатель NEXUS дочитать этот пост до конца?\n\nЕсли выразительность конфликтует с точностью — выбирай точность.\n\n==================================================\nТЕКУЩИЙ МАТЕРИАЛ\n==================================================\n\ntitle:\n{{ $json.title }}\n\ndescription:\n{{ $json.description }}\n\nurl:\n{{ $json.url }}\n\ncategory:\n{{ $json.category }}\n\nstory_type:\n{{ $json.story_type }}\n\nai_score:\n{{ $json.ai_score }}\n\naudience_interest:\n{{ $json.audience_interest }}\n\nnovelty:\n{{ $json.novelty }}\n\nimpact:\n{{ $json.impact }}\n\npost_potential:\n{{ $json.post_potential }}\n\nwow_factor:\n{{ $json.wow_factor }}\n\n==================================================\nФОРМАТ ОТВЕТА\n==================================================\n\nВерни ТОЛЬКО JSON следующей структуры:\n\n{\n  \"title\": \"Короткий заголовок поста без HTML\",\n  \"post_text\": \"Готовый текст Telegram-поста с допустимой HTML-разметкой\",\n  \"image_strategy\": \"SOURCE_PREFERRED\",\n  \"image_prompt\": \"Detailed image generation prompt in English\"\n}\n\nНикакого текста до JSON.\nНикакого текста после JSON.",
+        "hasOutputParser": true,
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        48,
+        0
+      ],
+      "name": "Create Post LLM",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "BEGIN;\n\nINSERT INTO posts (\n    article_id,\n    title,\n    post_text,\n    image_prompt,\n    image_strategy,\n    category,\n    status\n)\nVALUES (\n    $1,\n    $2,\n    $3,\n    $4,\n    $5,\n    $6,\n    'DRAFT'\n)\nON CONFLICT (article_id) DO NOTHING;\n\nUPDATE articles\nSET\n    status = 'POST_CREATED',\n    updated_at = NOW()\nWHERE id = $1;\n\nCOMMIT;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.article_id,\n  $json.title,\n  $json.post_text,\n  $json.image_prompt,\n  $json.image_strategy,\n  $json.category\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        512,
+        0
+      ],
+      "name": "Create Post & Mark Article",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiItems = $input.all();\nconst articles = $('Code in JavaScript2').all();\n\nreturn aiItems\n  .map((item, index) => {\n\n    if (!item.json.output) {\n      return null;\n    }\n\n    return {\n      json: {\n        article_id: articles[index].json.id,\n        title: item.json.output.title,\n        post_text: item.json.output.post_text,\n        image_strategy: item.json.output.image_strategy,\n        image_prompt: item.json.output.image_prompt,\n        category: articles[index].json.category,\n        source_url: articles[index].json.url,\n      }\n    };\n  })\n  .filter(item => item !== null);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        0
+      ],
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -496,
+        -256
+      ],
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    title,\n    post_text,\n    created_at\nFROM posts\nWHERE post_text IS NOT NULL\nORDER BY created_at DESC\nLIMIT 10;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -160,
+        -256
+      ],
+      "name": "Get Recent Posts",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const posts = $input.all();\n\nreturn [\n  {\n    json: {\n      recent_posts: posts.map(item => ({\n        title: item.json.title,\n        post_text: item.json.post_text\n      }))\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -256
+      ],
+      "name": "Run Once for All Items"
+    }
+  ],
+  "connections": {
+    "DeepSeek Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Create Post LLM",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Create Post LLM",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Project Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Recent Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DeepSeek Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Deduplicate Articles",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Deduplicate Articles",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Create Post LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Candidates": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Articles": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post LLM": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Post & Mark Article": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create Post & Mark Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Project Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Recent Posts": {
+      "main": [
+        [
+          {
+            "node": "Run Once for All Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Once for All Items": {
+      "main": [
+        [
+          {
+            "node": "Get Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 1800,
+    "availableInMCP": false
+  },
+  "nodeGroups": []
+}

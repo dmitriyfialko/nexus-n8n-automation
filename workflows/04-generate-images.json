@@ -1,0 +1,883 @@
+{
+  "name": "04 — Generate Images",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "http://django:8000/internal-api/projects/PROJECT_ID/settings/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        208,
+        -272
+      ],
+      "name": "Get Project Settings",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    id,\n    article_id,\n    title,\n    post_text,\n    image_strategy,\n    image_prompt,\n    category\nFROM posts\nWHERE status = 'DRAFT'\n  AND image_path IS NULL\nORDER BY created_at ASC\nLIMIT {{ $json.settings.posts_per_day }};",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        400,
+        -272
+      ],
+      "name": "Get Draft Post",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Attach Post ID').item.json.polling_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-key",
+              "value": "={{ $('Get Project Settings').first().json.settings.bfl_api_key }}"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        416,
+        272
+      ],
+      "name": "BFL Get Result",
+      "retryOnFail": false,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.result.sample }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1072,
+        304
+      ],
+      "name": "Download Image",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ '/files/science_channel/images/post_' + $json.post_id + '.jpeg' }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1616,
+        176
+      ],
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET\n    image_path = $1,\n    status = 'READY',\n    updated_at = NOW()\nWHERE id = $2;",
+        "options": {
+          "queryReplacement": "={{ [\n  '/files/science_channel/images/post_' + $json.post_id + '.jpeg',\n  $json.post_id\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1840,
+        176
+      ],
+      "name": "UPDATE posts",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f383829d-6b84-4229-962b-2cf0f4650c09",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "Ready",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        288
+      ],
+      "name": "IF Image Ready?"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        128,
+        640
+      ],
+      "name": "Wait"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bfl.ai/v1/flux-2-pro",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-key",
+              "value": "={{ $('Get Project Settings').first().json.settings.bfl_api_key }}"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": \"{{ $json.image_prompt }}\",\n  \"width\": 1024,\n  \"height\": 768\n}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        0,
+        304
+      ],
+      "name": "BFL Generate",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bb4a1c16-9f1a-4e9f-aaf4-3264e9c6d99f",
+              "leftValue": "={{ $runIndex + 1 }}",
+              "rightValue": 20,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": "={{ false }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        480,
+        624
+      ],
+      "name": "IF Retry Limit"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET\n    status = 'IMAGE_ERROR',\n    updated_at = NOW()\nWHERE id = $1;",
+        "options": {
+          "queryReplacement": "={{ [   $('Get Draft Post').first().json.id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        640
+      ],
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1056,
+        -272
+      ],
+      "name": "Fetch Source Page",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const html = $json.data ?? $json.body ?? '';\n\nfunction getMeta(property) {\n  const patterns = [\n    new RegExp(\n      `<meta[^>]+property=[\"']${property}[\"'][^>]+content=[\"']([^\"']+)[\"']`,\n      'i'\n    ),\n    new RegExp(\n      `<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']${property}[\"']`,\n      'i'\n    ),\n    new RegExp(\n      `<meta[^>]+name=[\"']${property}[\"'][^>]+content=[\"']([^\"']+)[\"']`,\n      'i'\n    ),\n    new RegExp(\n      `<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+name=[\"']${property}[\"']`,\n      'i'\n    ),\n  ];\n\n  for (const pattern of patterns) {\n    const match = html.match(pattern);\n\n    if (match) {\n      return match[1]\n        .replaceAll('&amp;', '&')\n        .replaceAll('&#x2F;', '/');\n    }\n  }\n\n  return null;\n}\n\nconst ogImage = getMeta('og:image');\nconst twitterImage = getMeta('twitter:image');\nconst sourceImageUrl = ogImage || twitterImage || null;\n\nreturn {\n  json: {\n    ...$json,\n    source_image_url: sourceImageUrl,\n    image_found: Boolean(sourceImageUrl),\n    image_meta_type: ogImage\n      ? 'og:image'\n      : twitterImage\n        ? 'twitter:image'\n        : null,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1296,
+        -256
+      ],
+      "name": "Code in JavaScript",
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "85e6c3dc-95f6-434c-adf5-03f6b9fa8931",
+              "leftValue": "={{ $json.image_found }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1488,
+        -240
+      ],
+      "name": "Source Image Found?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.source_image_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1712,
+        -224
+      ],
+      "name": "Download Source Image 2",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1210d9d4-57a0-4d8a-9972-8465de2e9385",
+              "name": "post_id",
+              "value": "={{ $('Get Draft Post').item.json.id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        208,
+        256
+      ],
+      "name": "Attach Post ID"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e9cb15b0-ef10-4f75-88c7-bf4a3ed5c0dd",
+              "name": "post_id",
+              "value": "={{ $('Attach Post ID').item.json.post_id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        640,
+        272
+      ],
+      "name": "Restore Post ID"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5808277f-9509-42b2-84b7-c1324ea68801",
+              "name": "post_id",
+              "value": "={{ $('Get Draft Post').item.json.id }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        1968,
+        -144
+      ],
+      "name": "Attach Post ID Source"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6d9716cb-6a1e-4b4e-b14e-5efe0700e347",
+              "leftValue": "={{ $json.image_strategy }}",
+              "rightValue": "GENERATE",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        624,
+        -272
+      ],
+      "name": "IF Generate images"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    a.id,\n    a.title,\n    a.url,\n    a.description,\n    a.content,\n    a.author,\n    a.category,\n    s.name AS source_name,\n    s.website_url\nFROM articles a\nJOIN sources s ON s.id = a.source_id\nWHERE a.id = $1\nLIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ [   $json.article_id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        832,
+        -272
+      ],
+      "name": "Get Source Article",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8012980b-7979-47d8-8245-c89e1042af17",
+              "name": "post_id",
+              "value": "={{ $('Get Draft Post').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "d5cb56d7-8bcb-46c8-b68a-0d1c0ba579c0",
+              "name": "image_prompt",
+              "value": "={{ $('Get Draft Post').item.json.image_prompt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        560,
+        32
+      ],
+      "name": "Prepare BFL Fallback"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -272
+      ],
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "operation": "resize",
+        "width": 1280,
+        "height": 1280,
+        "options": {
+          "format": "jpeg"
+        }
+      },
+      "type": "n8n-nodes-base.editImage",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        96
+      ],
+      "name": "Edit Image Resize"
+    }
+  ],
+  "connections": {
+    "Get Project Settings": {
+      "main": [
+        [
+          {
+            "node": "Get Draft Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Draft Post": {
+      "main": [
+        [
+          {
+            "node": "IF Generate images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BFL Get Result": {
+      "main": [
+        [
+          {
+            "node": "Restore Post ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Edit Image Resize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "UPDATE posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Image Ready?": {
+      "main": [
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Retry Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "BFL Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BFL Generate": {
+      "main": [
+        [
+          {
+            "node": "Attach Post ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Retry Limit": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Source Page": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare BFL Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Source Image Found?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare BFL Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Source Image Found?": {
+      "main": [
+        [
+          {
+            "node": "Download Source Image 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare BFL Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Source Image 2": {
+      "main": [
+        [
+          {
+            "node": "Attach Post ID Source",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare BFL Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "UPDATE posts": {
+      "main": [
+        []
+      ]
+    },
+    "Attach Post ID": {
+      "main": [
+        [
+          {
+            "node": "BFL Get Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Post ID": {
+      "main": [
+        [
+          {
+            "node": "IF Image Ready?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Post ID Source": {
+      "main": [
+        [
+          {
+            "node": "Edit Image Resize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Generate images": {
+      "main": [
+        [
+          {
+            "node": "BFL Generate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Source Article",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Source Article": {
+      "main": [
+        [
+          {
+            "node": "Fetch Source Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare BFL Fallback": {
+      "main": [
+        [
+          {
+            "node": "BFL Generate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Get Project Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Image Resize": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 1200,
+    "availableInMCP": false
+  },
+  "nodeGroups": []
+}

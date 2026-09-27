@@ -1,0 +1,293 @@
+{
+  "name": "05 — Publish Posts",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    id,\n    title,\n    post_text,\n    image_path,\n    scheduled_at\nFROM posts\nWHERE status = 'READY'\n  AND scheduled_at IS NOT NULL\n  AND scheduled_at <= NOW()\nORDER BY scheduled_at ASC\nLIMIT 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        256,
+        16
+      ],
+      "name": "Get Next Ready Post",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileSelector": "={{ $json.image_path }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "={{ $('Get Project Settings').item.json.settings.telegram_chat_id }}",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "={{\n  $('Get Next Ready Post').first().json.post_text.length > 1000\n    ? $('Get Next Ready Post').first().json.post_text.slice(0, 997) + '...'\n    : $('Get Next Ready Post').first().json.post_text\n}}",
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        672,
+        0
+      ],
+      "name": "Send a photo message",
+      "credentials": {
+        "telegramApi": {
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET\n    status = 'PUBLISHED',\n    published_at = NOW(),\n    telegram_message_id = $1,\n    updated_at = NOW()\nWHERE id = $2;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Send a photo message').first().json.result.message_id,\n  $('Get Next Ready Post').first().json.id\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        896,
+        0
+      ],
+      "name": "Mark Published",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "=rm -f -- \"{{ $('Get Next Ready Post').first().json.image_path }}\""
+      },
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "name": "Delete Image"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE posts\nSET\n    image_path = NULL,\n    updated_at = NOW()\nWHERE id = $1;",
+        "options": {
+          "queryReplacement": "={{ [   $('Get Next Ready Post').first().json.id ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1344,
+        0
+      ],
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "name": "Science Channel PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "http://django:8000/internal-api/projects/PROJECT_ID/settings/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        64,
+        16
+      ],
+      "name": "Get Project Settings",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "httpBearerAuth": {
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -112,
+        16
+      ],
+      "name": "Schedule Trigger 5 minutes"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d021df2c-6067-4ccb-9545-fec9ebcc6521",
+              "leftValue": "={{ $json.settings.enabled }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        -160
+      ],
+      "name": "If"
+    }
+  ],
+  "connections": {
+    "Get Next Ready Post": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Send a photo message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a photo message": {
+      "main": [
+        [
+          {
+            "node": "Mark Published",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Published": {
+      "main": [
+        [
+          {
+            "node": "Delete Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Image": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Project Settings": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Project Settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Get Next Ready Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 300,
+    "availableInMCP": false
+  },
+  "nodeGroups": []
+}
